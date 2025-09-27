@@ -22,8 +22,8 @@ class PaymentSeeder extends Seeder
 
             for ($i = 0; $i < $numPayments; $i++) {
                 $amount = rand(1000, $taxReturn->tax_due);
-                $status = fake()->randomElement(['pending', 'processing', 'paid', 'failed', 'refunded']);
-                $paidAt = in_array($status, ['paid', 'refunded']) ? now()->subDays(rand(1, 365)) : null;
+                $status = fake()->randomElement(['pending', 'processing', 'completed', 'failed', 'refunded']);
+                $paidAt = in_array($status, ['completed', 'refunded']) ? now()->subDays(rand(1, 365)) : null;
 
                 Payment::create([
                     'user_id' => $taxReturn->user_id,
@@ -31,7 +31,7 @@ class PaymentSeeder extends Seeder
                     'payment_number' => 'PAY' . str_pad(Payment::count() + 1, 6, '0', STR_PAD_LEFT),
                     'amount' => $amount,
                     'payment_type' => 'tax_payment',
-                    'payment_method' => fake()->randomElement(['bank_transfer', 'credit_card', 'debit_card', 'online_banking']),
+                    'payment_method' => fake()->randomElement(['bank_transfer', 'credit_card', 'debit_card', 'cash', 'check']),
                     'status' => $status,
                     'transaction_id' => 'TXN' . str_pad(rand(100000, 999999), 6, '0', STR_PAD_LEFT),
                     'reference_number' => 'REF' . str_pad(rand(100000, 999999), 6, '0', STR_PAD_LEFT),
@@ -56,15 +56,15 @@ class PaymentSeeder extends Seeder
 
             for ($i = 0; $i < $numPayments; $i++) {
                 $amount = rand(5000, 50000);
-                $status = fake()->randomElement(['pending', 'processing', 'paid', 'failed']);
-                $paidAt = $status === 'paid' ? now()->subDays(rand(1, 365)) : null;
+                $status = fake()->randomElement(['pending', 'processing', 'completed', 'failed']);
+                $paidAt = $status === 'completed' ? now()->subDays(rand(1, 365)) : null;
 
                 Payment::create([
                     'user_id' => $user->id,
                     'payment_number' => 'PAY' . str_pad(Payment::count() + 1, 6, '0', STR_PAD_LEFT),
                     'amount' => $amount,
-                    'payment_type' => 'advance_tax',
-                    'payment_method' => fake()->randomElement(['bank_transfer', 'credit_card', 'debit_card', 'online_banking']),
+                    'payment_type' => 'tax_payment',
+                    'payment_method' => fake()->randomElement(['bank_transfer', 'credit_card', 'debit_card', 'cash', 'check']),
                     'status' => $status,
                     'transaction_id' => 'TXN' . str_pad(rand(100000, 999999), 6, '0', STR_PAD_LEFT),
                     'reference_number' => 'REF' . str_pad(rand(100000, 999999), 6, '0', STR_PAD_LEFT),
