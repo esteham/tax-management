@@ -9,6 +9,32 @@ use Illuminate\Support\Facades\Validator;
 class PaymentController extends Controller
 {
     /**
+     * Display a listing of the payments.
+     */
+    public function index(Request $request)
+    {
+        $query = Payment::query();
+
+        // Optional filters
+        if ($request->filled('status')) {
+            $query->where('status', $request->string('status'));
+        }
+        if ($request->filled('payment_type')) {
+            $query->where('payment_type', $request->string('payment_type'));
+        }
+        if ($request->filled('user_id')) {
+            $query->where('user_id', (int) $request->input('user_id'));
+        }
+
+        $payments = $query->latest()->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $payments,
+        ]);
+    }
+
+    /**
      * Store a newly created resource in storage.
      */
     public function store(Request $request)
