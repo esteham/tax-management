@@ -43,6 +43,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // User management routes
     Route::apiResource('users', UserController::class);
+    Route::get('users/profile', [UserController::class, 'profile']);
     Route::patch('users/{user}/toggle-status', [UserController::class, 'toggleStatus']);
     Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword']);
 

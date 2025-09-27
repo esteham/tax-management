@@ -31,6 +31,8 @@ import { dataService, UserProfile as UserProfileType } from '../utils/dataServic
 import { pdfService } from '../utils/pdfService';
 import { useAuth } from '../App';
 
+const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000/api';
+
 export function UserProfile() {
   const { user } = useAuth();
   const [profile, setProfile] = useState<UserProfileType | null>(null);
@@ -48,26 +50,86 @@ export function UserProfile() {
     // Initialize data service and load profile
     dataService.initializeData();
     if (user) {
-      const uid = String(user.id);
-      let userProfile = dataService.getUserProfile(uid);
-      if (!userProfile) {
-        // Auto-create a minimal profile so the UI can render immediately
-        userProfile = dataService.createUserProfile({
-          id: uid,
-          email: (user as any)?.email || `user-${uid}@example.com`,
-          name: (user as any)?.name || 'Taxpayer',
-          role: 'taxpayer',
-          tinStatus: 'none',
+      const fetchProfile = async () => {
+        const token = localStorage.getItem('auth_token');
+        if (!token) {
+          // Fallback to mock if no token
+          fallbackToMock();
+          return;
+        }
+
+        try {
+          const res = await fetch(`${API_BASE}/users/profile`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.success && data?.data) {
+              const backendUser = data.data;
+              // Calculate totals
+              const totalTaxPaid = backendUser.payments?.reduce((sum: number, p: any) => p.status === 'paid' ? sum + p.amount : sum, 0) || 0;
+              const pendingPayments = backendUser.payments?.reduce((sum: number, p: any) => ['pending', 'processing'].includes(p.status) ? sum + p.amount : sum, 0) || 0;
+              const totalReturns = backendUser.taxReturns?.length || 0;
+              const filedReturns = backendUser.taxReturns?.filter((r: any) => ['filed', 'approved'].includes(r.status)).length || 0;
+              const complianceScore = totalReturns > 0 ? Math.round((filedReturns / totalReturns) * 100) : 95;
+
+              // Map backend user to frontend UserProfileType
+              const userProfile: UserProfileType = {
+                id: String(backendUser.id),
+                email: backendUser.email,
+                name: backendUser.name,
+                role: backendUser.role,
+                tinNumber: backendUser.tin,
+                phone: backendUser.phone,
+                address: backendUser.address,
+                businessName: backendUser.business_name,
+                registrationDate: backendUser.created_at || new Date().toISOString(),
+                complianceScore,
+                totalTaxPaid,
+                pendingPayments,
+                tinStatus: backendUser.tin ? 'approved' : 'none',
+              };
+              setProfile(userProfile);
+              setEditForm({
+                name: userProfile.name,
+                email: userProfile.email,
+                phone: userProfile.phone || '',
+                address: userProfile.address || '',
+                businessName: userProfile.businessName || '',
+              });
+              return;
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch profile:', error);
+        }
+
+        // Fallback to mock data if API fails
+        fallbackToMock();
+      };
+
+      const fallbackToMock = () => {
+        const uid = String(user.id);
+        let userProfile = dataService.getUserProfile(uid);
+        if (!userProfile) {
+          userProfile = dataService.createUserProfile({
+            id: uid,
+            email: user.email || `user-${uid}@example.com`,
+            name: user.name || 'Taxpayer',
+            role: user.role || 'taxpayer',
+          });
+        }
+        setProfile(userProfile);
+        setEditForm({
+          name: userProfile.name,
+          email: userProfile.email,
+          phone: userProfile.phone || '',
+          address: userProfile.address || '',
+          businessName: userProfile.businessName || '',
         });
-      }
-      setProfile(userProfile);
-      setEditForm({
-        name: userProfile.name,
-        email: userProfile.email,
-        phone: userProfile.phone || '',
-        address: userProfile.address || '',
-        businessName: userProfile.businessName || '',
-      });
+      };
+
+      fetchProfile();
     }
   }, [user]);
 
@@ -110,12 +172,62 @@ export function UserProfile() {
   const handleDownloadTIN = () => {
     if (!profile) return;
 
+    if (!profile.tinNumber) {
+      toast.error('TIN number not available. Please apply for TIN first.');
+      return;
+    }
+
     try {
       const tinCertificate = pdfService.generateTINCertificate(profile);
       pdfService.downloadPDF(tinCertificate, `TIN-Certificate-${profile.tinNumber}.pdf`);
       toast.success('TIN Certificate downloaded successfully!');
     } catch (error) {
       toast.error('Failed to generate TIN certificate. Please try again.');
+    }
+  };
+
+  const handleApplyTIN = async () => {
+    if (!user) return;
+
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) return;
+
+      const res = await fetch(`${API_BASE}/users/profile`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.success && data?.data) {
+          const backendUser = data.data;
+          // Recalculate and update profile
+          const totalTaxPaid = backendUser.payments?.reduce((sum: number, p: any) => p.status === 'paid' ? sum + p.amount : sum, 0) || 0;
+          const pendingPayments = backendUser.payments?.reduce((sum: number, p: any) => ['pending', 'processing'].includes(p.status) ? sum + p.amount : sum, 0) || 0;
+          const totalReturns = backendUser.taxReturns?.length || 0;
+          const filedReturns = backendUser.taxReturns?.filter((r: any) => ['filed', 'approved'].includes(r.status)).length || 0;
+          const complianceScore = totalReturns > 0 ? Math.round((filedReturns / totalReturns) * 100) : 95;
+
+          const userProfile: UserProfileType = {
+            id: String(backendUser.id),
+            email: backendUser.email,
+            name: backendUser.name,
+            role: backendUser.role,
+            tinNumber: backendUser.tin,
+            phone: backendUser.phone,
+            address: backendUser.address,
+            businessName: backendUser.business_name,
+            registrationDate: backendUser.created_at || new Date().toISOString(),
+            complianceScore,
+            totalTaxPaid,
+            pendingPayments,
+            tinStatus: backendUser.tin ? 'approved' : 'none',
+          };
+          setProfile(userProfile);
+          toast.success('TIN applied successfully!');
+        }
+      }
+    } catch (error) {
+      toast.error('Failed to apply for TIN. Please try again.');
     }
   };
 
@@ -162,16 +274,22 @@ export function UserProfile() {
                     {profile.role.replace('_', ' ')}
                   </Badge>
                   <span>•</span>
-                  <span>TIN: {profile.tinNumber}</span>
+                  <span>TIN: {profile.tinNumber || 'Not assigned'}</span>
                 </CardDescription>
               </div>
             </div>
             
             <div className="flex space-x-2">
-              <Button onClick={handleDownloadTIN} variant="outline">
-                <Download className="h-4 w-4 mr-2" />
-                Download TIN Certificate
-              </Button>
+              {profile.tinNumber ? (
+                <Button onClick={handleDownloadTIN} variant="outline">
+                  <Download className="h-4 w-4 mr-2" />
+                  Download TIN Certificate
+                </Button>
+              ) : (
+                <Button onClick={handleApplyTIN} variant="outline">
+                  Apply for TIN
+                </Button>
+              )}
               {!isEditing ? (
                 <Button onClick={handleEdit}>
                   <Edit className="h-4 w-4 mr-2" />
@@ -285,7 +403,7 @@ export function UserProfile() {
                       <div className="flex items-center space-x-2">
                         <Shield className="h-4 w-4 text-muted-foreground" />
                         <span className="text-sm font-medium">TIN:</span>
-                        <span className="font-mono">{profile.tinNumber}</span>
+                        <span className="font-mono">{profile.tinNumber || 'Not assigned'}</span>
                       </div>
                     </div>
                   </div>
@@ -315,35 +433,50 @@ export function UserProfile() {
                 TIN Certificate
               </CardTitle>
               <CardDescription>
-                Download your official Tax Identification Number certificate
+                {profile.tinNumber ? 'Download your official Tax Identification Number certificate' : 'Apply for your TIN to access certificate download'}
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <div className="bg-primary/10 p-2 rounded">
-                    <FileText className="h-6 w-6 text-primary" />
+              {profile.tinNumber ? (
+                <>
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      <div className="bg-primary/10 p-2 rounded">
+                        <FileText className="h-6 w-6 text-primary" />
+                      </div>
+                      <div>
+                        <h4 className="font-medium">TIN Certificate</h4>
+                        <p className="text-sm text-muted-foreground">
+                          Official certificate for TIN: {profile.tinNumber}
+                        </p>
+                      </div>
+                    </div>
+                    <Button onClick={handleDownloadTIN}>
+                      <Download className="h-4 w-4 mr-2" />
+                      Download PDF
+                    </Button>
                   </div>
-                  <div>
-                    <h4 className="font-medium">TIN Certificate</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Official certificate for TIN: {profile.tinNumber}
-                    </p>
-                  </div>
+                  
+                  <Alert className="mt-4">
+                    <CheckCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      This certificate is digitally generated and is valid for all official purposes.
+                      You can download it anytime from your profile.
+                    </AlertDescription>
+                  </Alert>
+                </>
+              ) : (
+                <div className="text-center p-6">
+                  <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h4 className="font-medium mb-2">No TIN Assigned</h4>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    You need to apply for a TIN before you can download the certificate.
+                  </p>
+                  <Button onClick={handleApplyTIN}>
+                    Apply for TIN
+                  </Button>
                 </div>
-                <Button onClick={handleDownloadTIN}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Download PDF
-                </Button>
-              </div>
-              
-              <Alert className="mt-4">
-                <CheckCircle className="h-4 w-4" />
-                <AlertDescription>
-                  This certificate is digitally generated and is valid for all official purposes.
-                  You can download it anytime from your profile.
-                </AlertDescription>
-              </Alert>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -412,9 +545,8 @@ export function UserProfile() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm">TIN Status:</span>
-                  <Badge variant="default">
-                    <CheckCircle className="h-3 w-3 mr-1" />
-                    Valid
+                  <Badge variant={profile.tinNumber ? 'default' : 'secondary'}>
+                    {profile.tinNumber ? 'Valid' : 'Not Assigned'}
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between">

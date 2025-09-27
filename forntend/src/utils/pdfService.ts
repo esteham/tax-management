@@ -1,5 +1,5 @@
 // PDF generation service for invoices and TIN certificates
-import { jsPDF } from 'jspdf@2.5.1';
+import { jsPDF } from 'jspdf';
 import { TaxReturn, Invoice, UserProfile, PaymentInvoice } from './dataService';
 
 export class PDFService {
@@ -85,11 +85,15 @@ export class PDFService {
   }
 
   generateTINCertificate(userProfile: UserProfile): string {
+    if (!userProfile.tinNumber) {
+      throw new Error('TIN number not available for this user');
+    }
+
     this.doc = new jsPDF();
-    
+
     // Header
     this.addHeader('TAX IDENTIFICATION NUMBER (TIN) CERTIFICATE');
-    
+
     // Certificate body
     this.doc.setFontSize(14);
     this.doc.setFont('helvetica', 'bold');
@@ -114,7 +118,7 @@ export class PDFService {
     this.doc.setDrawColor(0);
     this.doc.setFillColor(230, 230, 255);
     this.doc.rect(20, 150, 170, 25, 'FD');
-    
+
     this.doc.setFontSize(18);
     this.doc.setFont('helvetica', 'bold');
     this.doc.text('TIN NUMBER:', 25, 165);
