@@ -8,7 +8,7 @@ import { Badge } from '../ui/badge';
 import { Alert, AlertDescription } from '../ui/alert';
 import { Progress } from '../ui/progress';
 import { Separator } from '../ui/separator';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { 
   CreditCard, 
   Shield, 
@@ -114,7 +114,7 @@ export function PaymentForm({ invoice, onSuccess, onCancel }: PaymentFormProps) 
     const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
     const matches = v.match(/\d{4,16}/g);
     const match = matches && matches[0] || '';
-    const parts = [];
+    const parts: string[] = [];
     
     for (let i = 0, len = match.length; i < len; i += 4) {
       parts.push(match.substring(i, i + 4));
@@ -127,7 +127,7 @@ export function PaymentForm({ invoice, onSuccess, onCancel }: PaymentFormProps) 
     }
   };
 
-  const simulatePaymentProcessing = async (): Promise<Payment> => {
+  const simulatePaymentProcessing = async (): Promise<{ payment: Payment; paymentInvoice: PaymentInvoice }> => {
     // Simulate API call delay
     await new Promise(resolve => setTimeout(resolve, 2000));
     
@@ -140,7 +140,7 @@ export function PaymentForm({ invoice, onSuccess, onCancel }: PaymentFormProps) 
 
     // Create payment record
     const payment = dataService.createPayment({
-      userId: user!.id,
+      userId: String(user!.id),
       invoiceId: invoice.id,
       taxReturnId: invoice.taxReturnId,
       description: `Payment for Tax Invoice ${invoice.id}`,
@@ -152,22 +152,51 @@ export function PaymentForm({ invoice, onSuccess, onCancel }: PaymentFormProps) 
       transactionId: `TXN-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     });
 
-    // Update invoice status
-    const data = JSON.parse(localStorage.getItem('taxpro_data') || '{}');
-    const invoiceIndex = data.invoices?.findIndex((inv: Invoice) => inv.id === invoice.id);
-    if (invoiceIndex !== -1) {
-      data.invoices[invoiceIndex].status = 'paid';
-      localStorage.setItem('taxpro_data', JSON.stringify(data));
+    {
+      const store = JSON.parse(localStorage.getItem('taxpro_data') || '{}');
+      store.invoices = store.invoices || [];
+      let idx = store.invoices.findIndex((inv: Invoice) => inv.id === invoice.id);
+      if (idx === -1) {
+        // Create the invoice if missing
+        const created = dataService.createInvoice({
+          userId: String(user!.id),
+          taxReturnId: invoice.taxReturnId,
+          amount: invoice.amount,
+          taxYear: invoice.taxYear,
+          issueDate: invoice.issueDate || new Date().toISOString(),
+          dueDate: invoice.dueDate,
+          status: 'paid',
+        });
+        // Refresh and set to paid
+        const fresh = JSON.parse(localStorage.getItem('taxpro_data') || '{}');
+        const freshIdx = fresh.invoices?.findIndex((inv: Invoice) => inv.id === created.id) ?? -1;
+        if (freshIdx !== -1) {
+          fresh.invoices[freshIdx].status = 'paid';
+          localStorage.setItem('taxpro_data', JSON.stringify(fresh));
+        }
+      } else {
+        store.invoices[idx].status = 'paid';
+        localStorage.setItem('taxpro_data', JSON.stringify(store));
+      }
     }
 
-    // Create payment invoice
+    // If a pending payment exists for this invoice, convert it to paid
+    {
+      const store = JSON.parse(localStorage.getItem('taxpro_data') || '{}');
+      const pending = (store.payments || []).find((p: Payment) => p.invoiceId === invoice.id && p.userId === String(user!.id) && p.status === 'pending');
+      if (pending && pending.id) {
+        dataService.updatePaymentStatus(pending.id, 'paid', payment.transactionId!);
+      }
+    }
+
+    // Create payment invoice (receipt)
     const paymentInvoice = dataService.createPaymentInvoice({
       paymentId: payment.id,
-      userId: user!.id,
+      userId: String(user!.id),
       invoiceNumber: `INV-PAY-${Date.now()}`,
       amount: totalAmount,
       paymentDate: new Date().toISOString(),
-      paymentMethod: formData.gateway,
+      paymentMethod: formData.gateway as any,
       transactionId: payment.transactionId!,
       taxYear: invoice.taxYear,
       description: `Payment Invoice for ${invoice.id}`,

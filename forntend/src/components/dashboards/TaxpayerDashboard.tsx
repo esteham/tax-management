@@ -28,7 +28,7 @@ import {
 import { dataService, TaxReturn, Payment, Invoice, TinRequest } from '../../utils/dataService';
 import { pdfService } from '../../utils/pdfService';
 import { useAuth } from '../../App';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 export function TaxpayerDashboard() {
   const { user } = useAuth();
@@ -56,18 +56,25 @@ export function TaxpayerDashboard() {
 
   const loadUserData = () => {
     if (!user) return;
+    const uid = String(user.id);
     
-    const payments = dataService.getPayments(user.id);
-    const returns = dataService.getTaxReturns(user.id);
-    const invoices = dataService.getInvoices(user.id);
-    const profile = dataService.getUserProfile(user.id);
-    const tinRequests = dataService.getTinRequests(user.id);
+    const payments = dataService.getPayments(uid);
+    const returns = dataService.getTaxReturns(uid);
+    const invoices = dataService.getInvoices(uid);
+    const profile = dataService.getUserProfile(uid);
+    const tinRequests = dataService.getTinRequests(uid);
     
     setMyPayments(payments);
     setMyReturns(returns);
     setMyInvoices(invoices);
     setUserProfile(profile);
     setTinRequest(tinRequests.length > 0 ? tinRequests[0] : null);
+  };
+
+  const handleTinApplicationSuccess = (request: TinRequest) => {
+    setShowTinApplication(false);
+    loadUserData();
+    toast.success('TIN application submitted successfully!');
   };
 
   const upcomingDeadlines = [
@@ -110,29 +117,88 @@ export function TaxpayerDashboard() {
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'high': return 'destructive';
-      case 'medium': return 'secondary';
       case 'low': return 'outline';
       default: return 'outline';
     }
   };
 
-  const handleTaxReturnSuccess = (taxReturn: TaxReturn) => {
+  const handleTaxReturnSuccess = (taxReturn: TaxReturn | any) => {
     setShowTaxReturnForm(false);
     loadUserData(); // Refresh data
     toast.success('Tax return filed successfully!');
-  };
 
-  const handleTinApplicationSuccess = (request: TinRequest) => {
-    setShowTinApplication(false);
-    loadUserData(); // Refresh data
-    toast.success('TIN application submitted successfully!');
+    try {
+      if (!user) return;
+      const amount = Number(
+        (taxReturn && (taxReturn.taxLiability || taxReturn.tax_due)) ?? 0
+      );
+      const taxYear = String((taxReturn && (taxReturn.year || taxReturn.tax_year)) ?? new Date().getFullYear());
+      const taxReturnId = String(taxReturn?.id ?? '');
+
+      if (amount > 0 && taxReturnId) {
+        const invoice = dataService.createInvoice({
+          userId: String(user.id),
+          taxReturnId,
+          amount,
+          taxYear,
+          issueDate: new Date().toISOString(),
+          dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+          status: 'unpaid',
+        });
+
+        // Also create a pending payment so it shows up in Payment History
+        dataService.createPayment({
+          userId: String(user.id),
+          taxReturnId,
+          invoiceId: invoice.id,
+          description: `Payment for Tax Invoice ${invoice.id}`,
+          amount,
+          status: 'pending',
+          dueDate: invoice.dueDate,
+        });
+        setSelectedInvoice(invoice);
+        setShowPaymentForm(true);
+      } else {
+        setActiveItem('invoices');
+      }
+    } catch (e) {
+      setActiveItem('invoices');
+    }
   };
 
   const handlePaymentSuccess = (payment: Payment) => {
+    // Ensure invoice exists and is marked as paid in local storage for Invoices tab
+    try {
+      if (user && selectedInvoice) {
+        const data = JSON.parse(localStorage.getItem('taxpro_data') || '{}');
+        data.invoices = data.invoices || [];
+        const idx = data.invoices.findIndex((inv: any) => inv.id === selectedInvoice.id);
+        if (idx !== -1) {
+          data.invoices[idx].status = 'paid';
+          localStorage.setItem('taxpro_data', JSON.stringify(data));
+        } else {
+          // Create a minimal invoice record if missing
+          const created = {
+            id: selectedInvoice.id,
+            userId: String(user.id),
+            taxReturnId: selectedInvoice.taxReturnId,
+            amount: selectedInvoice.amount,
+            taxYear: selectedInvoice.taxYear,
+            issueDate: selectedInvoice.issueDate || new Date().toISOString(),
+            dueDate: selectedInvoice.dueDate,
+            status: 'paid',
+          };
+          data.invoices.push(created);
+          localStorage.setItem('taxpro_data', JSON.stringify(data));
+        }
+      }
+    } catch {}
+
     setShowPaymentForm(false);
     setSelectedInvoice(null);
     loadUserData(); // Refresh data
     toast.success('Payment completed successfully!');
+    setActiveItem('invoices');
   };
 
   const handlePayInvoice = (invoice: Invoice) => {
@@ -146,12 +212,27 @@ export function TaxpayerDashboard() {
         toast.error('User profile not loaded');
         return;
       }
-      const taxReturn = myReturns.find(r => r.id === invoice.taxReturnId);
+      let taxReturn = myReturns.find(r => r.id === invoice.taxReturnId);
       if (!taxReturn) {
-        toast.error('Linked tax return not found for this invoice');
-        return;
+        // Synthesize a minimal return for PDF if not found in local store
+        taxReturn = {
+          id: invoice.taxReturnId,
+          userId: String(user?.id || ''),
+          year: invoice.taxYear,
+          returnType: 'annual_income',
+          status: 'filed',
+          income: invoice.amount,
+          deductions: 0,
+          taxableIncome: invoice.amount,
+          taxLiability: invoice.amount,
+          filedDate: new Date().toISOString(),
+          dueDate: invoice.dueDate,
+          documents: [],
+          invoiceGenerated: true,
+          invoiceId: invoice.id,
+        } as any;
       }
-      const dataUri = pdfService.generateInvoice(taxReturn, userProfile as any);
+      const dataUri = pdfService.generateInvoice(taxReturn as any, userProfile as any);
       pdfService.downloadPDF(dataUri, `invoice-${invoice.id}.pdf`);
       toast.success('Invoice downloaded');
     } catch (e) {
@@ -561,7 +642,19 @@ export function TaxpayerDashboard() {
                   columns={paymentColumns}
                   searchable={true}
                   actions={{
-                    view: (item) => console.log('View payment:', item),
+                    view: (item) => {
+                      // If payment is pending and has an invoice, open PaymentForm
+                      if (item.status === 'pending' && item.invoiceId) {
+                        const inv = myInvoices.find(i => i.id === item.invoiceId);
+                        if (inv) {
+                          setSelectedInvoice(inv);
+                          setShowPaymentForm(true);
+                          return;
+                        }
+                      }
+                      // Otherwise, just show a small toast/info
+                      toast.info('Payment details opened');
+                    },
                   }}
                   pagination={{
                     currentPage: 1,

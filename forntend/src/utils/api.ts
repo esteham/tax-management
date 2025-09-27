@@ -1,4 +1,4 @@
-const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000/api';
+ const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000/api';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -8,10 +8,11 @@ function authHeaders() {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const isFormData = options && options.body instanceof FormData;
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...(options.headers || {}),
       ...authHeaders(),
     },
@@ -30,6 +31,8 @@ export const api = {
   put: <T>(path: string, body?: any) => request<T>(path, { method: 'PUT', body: JSON.stringify(body || {}) }),
   patch: <T>(path: string, body?: any) => request<T>(path, { method: 'PATCH', body: JSON.stringify(body || {}) }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+  // New helper for multipart/form-data uploads
+  postForm: <T>(path: string, formData: FormData) => request<T>(path, { method: 'POST', body: formData }),
 };
 
 export default api;
