@@ -511,14 +511,24 @@ export function PaymentForm({ invoice, onSuccess, onCancel }: PaymentFormProps) 
                 variant="outline"
                 onClick={() => {
                   if (paymentInvoice && user) {
-                    const userProfile = dataService.getUserProfile(user.id);
+                    let userProfile = dataService.getUserProfile(String(user.id));
+                    if (!userProfile) {
+                      userProfile = dataService.createUserProfile({
+                        id: String(user.id),
+                        email: (user as any)?.email || `user-${String(user.id)}@example.com`,
+                        name: (user as any)?.name || 'Taxpayer',
+                        role: 'taxpayer',
+                        tinStatus: 'none',
+                      });
+                    }
                     if (userProfile) {
                       const pdfDataUri = pdfService.generatePaymentInvoice(paymentInvoice, userProfile);
                       pdfService.downloadPDF(pdfDataUri, `payment-invoice-${paymentInvoice.invoiceNumber}.pdf`);
                       toast.success('Payment invoice downloaded successfully!');
                     }
                   }
-                }}
+                }
+              }
               >
                 <Download className="h-4 w-4 mr-2" />
                 Download Receipt

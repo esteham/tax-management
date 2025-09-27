@@ -61,7 +61,17 @@ export function TaxpayerDashboard() {
     const payments = dataService.getPayments(uid);
     const returns = dataService.getTaxReturns(uid);
     const invoices = dataService.getInvoices(uid);
-    const profile = dataService.getUserProfile(uid);
+    let profile = dataService.getUserProfile(uid);
+    if (!profile) {
+      // Create a minimal profile so downstream features (PDF, dashboard) always work
+      profile = dataService.createUserProfile({
+        id: uid,
+        email: (user as any)?.email || `user-${uid}@example.com`,
+        name: (user as any)?.name || 'Taxpayer',
+        role: 'taxpayer',
+        tinStatus: 'none',
+      });
+    }
     const tinRequests = dataService.getTinRequests(uid);
     
     setMyPayments(payments);

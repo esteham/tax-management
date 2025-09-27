@@ -144,7 +144,6 @@ class DataService {
     return data ? JSON.parse(data) : null;
   }
 
-  // Save data to localStorage
   private saveData(data: any) {
     data.lastUpdated = new Date().toISOString();
     localStorage.setItem(this.storageKey, JSON.stringify(data));
@@ -156,13 +155,45 @@ class DataService {
     return data?.users?.find((user: UserProfile) => user.id === userId) || null;
   }
 
+  createUserProfile(
+    profile: Omit<UserProfile, 'registrationDate' | 'complianceScore' | 'totalTaxPaid' | 'pendingPayments'> &
+      Partial<Pick<UserProfile, 'registrationDate' | 'complianceScore' | 'totalTaxPaid' | 'pendingPayments'>>
+  ): UserProfile {
+    let data = this.getData();
+    if (!data) {
+      this.initializeData();
+      data = this.getData();
+    }
+    data.users = data.users || [];
+    const existing = data.users.find((u: UserProfile) => u.id === profile.id);
+    if (existing) {
+      return existing;
+    }
+    const newProfile: UserProfile = {
+      id: profile.id,
+      email: profile.email,
+      name: profile.name,
+      role: profile.role || 'taxpayer',
+      tinNumber: profile.tinNumber,
+      phone: profile.phone,
+      address: profile.address,
+      businessName: profile.businessName,
+      registrationDate: profile.registrationDate || new Date().toISOString(),
+      complianceScore: profile.complianceScore ?? 95,
+      totalTaxPaid: profile.totalTaxPaid ?? 0,
+      pendingPayments: profile.pendingPayments ?? 0,
+      tinStatus: profile.tinStatus || 'none',
+    };
+    data.users.push(newProfile);
+    this.saveData(data);
+    return newProfile;
+  }
+
   updateUserProfile(userId: string, updates: Partial<UserProfile>): UserProfile | null {
     const data = this.getData();
     if (!data) return null;
-
     const userIndex = data.users.findIndex((user: UserProfile) => user.id === userId);
     if (userIndex === -1) return null;
-
     data.users[userIndex] = { ...data.users[userIndex], ...updates };
     this.saveData(data);
     return data.users[userIndex];
