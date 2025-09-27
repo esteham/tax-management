@@ -4,18 +4,19 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
-import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
+import { Badge } from './ui/badge';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Alert, AlertDescription } from './ui/alert';
-import { toast } from 'sonner@2.0.3';
-import { 
-  User, 
-  Download, 
-  Edit, 
-  Save, 
-  X, 
-  Shield, 
+import { toast } from 'sonner';
+
+import {
+  User,
+  Download,
+  Edit,
+  Save,
+  X,
+  Shield,
   Calendar,
   Phone,
   Mail,
@@ -23,8 +24,9 @@ import {
   Building,
   TrendingUp,
   FileText,
-  CheckCircle
+  CheckCircle,
 } from 'lucide-react';
+
 import { dataService, UserProfile as UserProfileType } from '../utils/dataService';
 import { pdfService } from '../utils/pdfService';
 import { useAuth } from '../App';
@@ -46,17 +48,26 @@ export function UserProfile() {
     // Initialize data service and load profile
     dataService.initializeData();
     if (user) {
-      const userProfile = dataService.getUserProfile(user.id);
-      if (userProfile) {
-        setProfile(userProfile);
-        setEditForm({
-          name: userProfile.name,
-          email: userProfile.email,
-          phone: userProfile.phone || '',
-          address: userProfile.address || '',
-          businessName: userProfile.businessName || '',
+      const uid = String(user.id);
+      let userProfile = dataService.getUserProfile(uid);
+      if (!userProfile) {
+        // Auto-create a minimal profile so the UI can render immediately
+        userProfile = dataService.createUserProfile({
+          id: uid,
+          email: (user as any)?.email || `user-${uid}@example.com`,
+          name: (user as any)?.name || 'Taxpayer',
+          role: 'taxpayer',
+          tinStatus: 'none',
         });
       }
+      setProfile(userProfile);
+      setEditForm({
+        name: userProfile.name,
+        email: userProfile.email,
+        phone: userProfile.phone || '',
+        address: userProfile.address || '',
+        businessName: userProfile.businessName || '',
+      });
     }
   }, [user]);
 
@@ -82,7 +93,8 @@ export function UserProfile() {
 
     setIsSaving(true);
     try {
-      const updatedProfile = dataService.updateUserProfile(user.id, editForm);
+      const updatedProfile = dataService.updateUserProfile(String(user.id), editForm);
+
       if (updatedProfile) {
         setProfile(updatedProfile);
         setIsEditing(false);
