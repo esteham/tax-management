@@ -85,8 +85,3 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 
 For questions, feedback, or issues, please open an issue in this repo or reach out to the maintainer.
 
----
-
-If you like, I can also generate a full populated README with badges, screenshots, and examples specific to this repo (based on its current code) — would you like me to do that?
-::contentReference[oaicite:0]{index=0}
-```
