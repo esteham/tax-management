@@ -1,24 +1,49 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DashboardLayout } from '../shared/DashboardLayout';
 import { StatsCard } from '../shared/StatsCard';
 import { DataTable, Column } from '../shared/DataTable';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
-import { 
-  Users, 
-  FileText, 
-  DollarSign, 
-  Calendar, 
+import { api } from '../../utils/api';
+import {
+  Users,
+  FileText,
+  DollarSign,
+  Calendar,
   Plus,
   MessageSquare,
   Clock,
   CheckCircle,
-  TrendingUp
+  TrendingUp,
+  Download
 } from 'lucide-react';
 
 export function AccountantDashboard() {
   const [activeItem, setActiveItem] = useState('dashboard');
+  const [payments, setPayments] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  // Fetch payments from API
+  const fetchPayments = async () => {
+    setLoading(true);
+    try {
+      const response = await api.get('/payments');
+      setPayments(response.data || []);
+    } catch (error) {
+      console.error('Error fetching payments:', error);
+      setPayments([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch payments when payments tab is active
+  useEffect(() => {
+    if (activeItem === 'payments') {
+      fetchPayments();
+    }
+  }, [activeItem]);
 
   // Mock data
   const clients = [
@@ -389,15 +414,87 @@ export function AccountantDashboard() {
           </div>
         );
 
-      default:
+      case 'payments':
+        const paymentColumns: Column[] = [
+          { key: 'id', label: 'Payment ID', sortable: true },
+          { key: 'description', label: 'Description', sortable: true },
+          { key: 'amount', label: 'Amount', sortable: true },
+          { key: 'status', label: 'Status', filterable: true },
+          { key: 'due_date', label: 'Due Date', sortable: true },
+          { key: 'paid_date', label: 'Paid Date', sortable: true },
+          { key: 'payment_method', label: 'Payment Method', filterable: true },
+        ];
+
+        const handleDownloadReceipt = async (payment: any) => {
+          try {
+            const response = await fetch(`http://localhost:8000/api/payments/${payment.id}/receipt`, {
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+              },
+            });
+            if (response.ok) {
+              const blob = await response.blob();
+              const url = window.URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `receipt-${payment.id}.txt`;
+              document.body.appendChild(a);
+              a.click();
+              window.URL.revokeObjectURL(url);
+              document.body.removeChild(a);
+            } else {
+              console.error('Failed to download receipt');
+            }
+          } catch (error) {
+            console.error('Error downloading receipt:', error);
+          }
+        };
+
         return (
-          <div className="text-center py-12">
-            <h2 className="text-2xl font-bold mb-4">
-              {activeItem.charAt(0).toUpperCase() + activeItem.slice(1).replace('-', ' ')}
-            </h2>
-            <p className="text-muted-foreground">
-              This section is under development. Content will be available soon.
-            </p>
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold">Payments</h2>
+              <Button onClick={fetchPayments} disabled={loading}>
+                {loading ? 'Loading...' : 'Refresh'}
+              </Button>
+            </div>
+
+            <div className="grid lg:grid-cols-3 gap-6">
+              <StatsCard
+                title="Total Payments"
+                value={payments.length.toString()}
+                change={{ value: 'All time', type: 'neutral' }}
+                icon={DollarSign}
+              />
+              <StatsCard
+                title="Paid Payments"
+                value={payments.filter((p: any) => p.status === 'paid').length.toString()}
+                change={{ value: 'Completed', type: 'increase' }}
+                icon={CheckCircle}
+              />
+              <StatsCard
+                title="Pending Payments"
+                value={payments.filter((p: any) => p.status === 'pending').length.toString()}
+                change={{ value: 'Awaiting payment', type: 'neutral' }}
+                icon={Clock}
+              />
+            </div>
+
+            <Card>
+              <CardContent className="p-6">
+                <DataTable
+                  title="All Payments"
+                  data={payments}
+                  columns={paymentColumns}
+                  loading={loading}
+                  actions={{
+                    download: (item) => handleDownloadReceipt(item),
+                  }}
+                  actionLabels={{
+    }}
+                />
+              </CardContent>
+            </Card>
           </div>
         );
     }

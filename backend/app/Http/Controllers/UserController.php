@@ -81,13 +81,13 @@ class UserController extends Controller
     public function profile()
     {
         $user = Auth::user()->load(['taxReturns', 'payments', 'notices']);
-        
-        // Auto-assign TIN if user is taxpayer and doesn't have one
-        if ($user->role === 'taxpayer' && !$user->tin) {
+
+        // Auto-assign TIN if user doesn't have one
+        if (!$user->tin) {
             $user->tin = 'TIN' . str_pad($user->id, 6, '0', STR_PAD_LEFT);
             $user->save();
         }
-        
+
         return response()->json([
             'success' => true,
             'data' => $user

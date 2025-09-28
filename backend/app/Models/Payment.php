@@ -31,4 +31,17 @@ class Payment extends Model
         'due_date' => 'datetime',
         'paid_at' => 'datetime',
     ];
+
+    /**
+     * Relationships
+     */
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function taxReturn()
+    {
+        return $this->belongsTo(TaxReturn::class);
+    }
 }
